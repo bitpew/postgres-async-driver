@@ -105,11 +105,11 @@ public class DataConverter {
 
     @SuppressWarnings("unchecked")
     public <T> T toObject(Class<T> type, Oid oid, byte[] value) {
-        Converter converter = typeToConverter.get(type);
-        if(converter == null) {
-            throw new IllegalArgumentException("Unknown conversion target: " + value.getClass());
-        }
-        return (T) converter.to(oid, value);
+        return typeToConverter.entrySet().stream()
+                .filter(e -> e.getKey().isAssignableFrom(type))
+                .findFirst()
+                .map(e -> (T) Converter.class.cast(e.getValue()).to(oid, value))
+                .orElseThrow(() -> new IllegalArgumentException("Unknown conversion target: " + value.getClass()));
     }
 
     public byte[] fromObject(Object o) {
@@ -142,11 +142,11 @@ public class DataConverter {
 
     @SuppressWarnings("unchecked")
     protected byte[] fromConvertable(Object value) {
-        Converter converter = typeToConverter.get(value.getClass());
-        if(converter == null) {
-            throw new IllegalArgumentException("Unknown conversion target: " + value.getClass());
-        }
-        return converter.from(value);
+        return typeToConverter.entrySet().stream()
+                .filter(e -> e.getKey().isInstance(value))
+                .findFirst()
+                .map(e -> Converter.class.cast(e.getValue()).from(value))
+                .orElseThrow(() -> new IllegalArgumentException("Unknown conversion target: " + value.getClass()));
     }
 
     public byte[][] fromParameters(List<Object> parameters) {
