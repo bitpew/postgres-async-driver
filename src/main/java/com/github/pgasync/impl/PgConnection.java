@@ -25,8 +25,6 @@ import rx.Subscriber;
 import rx.observers.Subscribers;
 
 import java.util.*;
-import java.util.function.Consumer;
-import java.util.stream.Collectors;
 
 import static com.github.pgasync.impl.message.RowDescription.ColumnDescription;
 
@@ -54,7 +52,7 @@ public class PgConnection implements Connection {
     }
 
     Observable<? extends Message> authenticate(String username, String password, Message message) {
-        return message instanceof Authentication
+        return message instanceof Authentication && !((Authentication) message).isAuthenticationOk()
                     ? stream.authenticate(new PasswordMessage(username, password, ((Authentication) message).getMd5Salt()))
                     : Observable.just(message);
     }
@@ -174,6 +172,7 @@ public class PgConnection implements Connection {
      * Transaction that rollbacks the tx on backend error and closes the connection on COMMIT/ROLLBACK failure.
      */
     class PgConnectionTransaction implements Transaction {
+
         @Override
         public Observable<Void> commit() {
             return PgConnection.this.querySet("COMMIT")
