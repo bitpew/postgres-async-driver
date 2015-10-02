@@ -9,6 +9,7 @@ import java.sql.Date;
 import java.sql.Time;
 import java.sql.Timestamp;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 
@@ -18,6 +19,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 public class DataConverter {
 
     final Map<Class<?>, Converter<?>> typeToConverter = new HashMap<>();
+    final Map<Class<?>, Converter<?>> resolvedTypeConverters= new ConcurrentHashMap<>();
 
     public DataConverter(List<Converter<?>> converters) {
         converters.forEach(c -> typeToConverter.put(c.type(), c));
@@ -103,15 +105,6 @@ public class DataConverter {
         }
     }
 
-    @SuppressWarnings("unchecked")
-    public <T> T toObject(Class<T> type, Oid oid, byte[] value) {
-        return typeToConverter.entrySet().stream()
-                .filter(e -> e.getKey().isAssignableFrom(type))
-                .findFirst()
-                .map(e -> (T) Converter.class.cast(e.getValue()).to(oid, value))
-                .orElseThrow(() -> new IllegalArgumentException("Unknown conversion target: " + value.getClass()));
-    }
-
     public byte[] fromObject(Object o) {
         if (o == null) {
             return null;
@@ -142,11 +135,51 @@ public class DataConverter {
 
     @SuppressWarnings("unchecked")
     protected byte[] fromConvertable(Object value) {
+        return ((Converter) resolvedTypeConverters
+                .computeIfAbsent(
+                        value.getClass(),
+                        (_clazz) -> resolveConverterForObject(value)
+                                .orElseThrow(() -> new IllegalArgumentException("Unknown conversion target: " + value.getClass()))
+                ))
+                .from(value);
+    }
+
+    @SuppressWarnings("unchecked")
+    public <T> T toObject(Class<T> type, Oid oid, byte[] value) {
+        return (T)resolvedTypeConverters
+                .computeIfAbsent(
+                        type,
+                        (clazz) -> resolveConverterForClass(clazz)
+                                .orElseThrow(() -> new IllegalArgumentException("Unknown conversion target: " + value.getClass()))
+                ).to(oid, value);
+    }
+
+    @SuppressWarnings("unchecked")
+    private <T> Optional<Converter<T>> resolveConverterForClass(Class<T> clazz)  {
+        Optional<Converter<T>> c = Optional.ofNullable((Converter) typeToConverter.get(clazz));
+
+        if(c.isPresent()) {
+            return c;
+        }
+
         return typeToConverter.entrySet().stream()
-                .filter(e -> e.getKey().isInstance(value))
+                .filter(e -> e.getKey().isAssignableFrom(clazz))
                 .findFirst()
-                .map(e -> Converter.class.cast(e.getValue()).from(value))
-                .orElseThrow(() -> new IllegalArgumentException("Unknown conversion target: " + value.getClass()));
+                .map(e -> (Converter) e.getValue());
+    }
+
+    @SuppressWarnings("unchecked")
+    private Optional<Converter> resolveConverterForObject(Object object)  {
+        Optional<Converter> c = Optional.ofNullable(typeToConverter.get(object.getClass()));
+
+        if(c.isPresent()) {
+            return c;
+        }
+
+        return typeToConverter.entrySet().stream()
+                    .filter(e -> e.getKey().isInstance(object))
+                    .findFirst()
+                    .map(e -> ((Converter) e.getValue()));
     }
 
     public byte[][] fromParameters(List<Object> parameters) {
