@@ -150,7 +150,7 @@ public class DataConverter {
                 .computeIfAbsent(
                         type,
                         (clazz) -> resolveConverterForClass(clazz)
-                                .orElseThrow(() -> new IllegalArgumentException("Unknown conversion target: " + value.getClass()))
+                                .orElseThrow(() -> new IllegalArgumentException("Unknown conversion target: " + type))
                 ).to(oid, value);
     }
 
